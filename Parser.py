@@ -46,8 +46,9 @@ def parse(file, dir):
     # replace the words with word ids
     wordid_docid = make_wordid_docid_tuples(wordlist_asa_string, words_indexes_list, wordid_docid)
 
-    # create the binary file
-    create_binary_file(wordid_docid, dir)
+    # create the binary files:
+    create_word_to_docs_binary_file(wordid_docid, dir)
+    create_doc_to_words_binary_file(wordid_docid, dir)
 
 
 def remove_duplicates(wordlist):
@@ -124,88 +125,76 @@ def get_docid(tuple):
     return tuple[1]
 
 
-def create_binary_file(wordid_docid, dir):
+def create_word_to_docs_binary_file(wordid_docid, dir):
 
     wordid_docid = sorted(wordid_docid, key=get_wordid)
 
-    global curr_id, frequency, index_before
-    curr_id = 0
-    frequency = 0
-    index_before = 0
-    word_documents = b''
+    curr_wordid = wordid_docid[0][0]
+    last_wordid = curr_wordid
+    line = []
+    with open(dir+"words_to_file.bin", 'wb') as bin:
 
-    with open(dir + 'binary.dat', 'ab') as bin:
-        # all indexes - all the words
+        def write_to_file():
+            bin.write(line[0].to_bytes(4, 'big'))
+            bin.write(line[1].to_bytes(4, 'big'))
+            for i in range(len(line) - 2):
+                bin.write(line[i + 2].to_bytes(4, 'big'))
+
         for item in wordid_docid:
             if not isinstance(item, tuple):
                 continue
             wordid, docid = item[0], item[1]
 
-            # set current word
-            if wordid != curr_id:
-                # make it all one big list:
-                to_the_bin = divide_number_to_byets(curr_id)
-                to_the_bin += divide_number_to_byets(frequency)
-                # write it to the file:
-                to_the_bin += word_documents
+            curr_wordid = wordid
+            if curr_wordid != last_wordid and len(line) > 0:
+                write_to_file()
+                line.clear()
+                last_wordid = curr_wordid
 
-                bin.write(to_the_bin)
-                # reset:
-                curr_id = wordid
-                frequency = 0
-                word_documents = b''
+            if len(line) == 0:
+                line.append(wordid)
+                line.append(1)
+                line.append(docid)
             else:
-                frequency += 1
-                wordid_docid += divide_number_to_byets(docid)
-            # set the id of the last to document to subtract
-            index_before = docid
-        print("Created binary file")
+                line[1] = line[1] + 1
+                line.append(docid)
+        write_to_file()
+    print("Finished writing the word to docs file")
 
+def create_doc_to_words_binary_file(wordid_docid, dir):
 
-def divide_number_to_byets(num):
-    global res
-    # if the docid needs 1 byte 00 in the beginning:
-    if num < c.sixbits:
-        res = pack('h', num)
-    # if the docid needs 2 bytes (more than 6 bits, 01 in the beginning):
-    elif c.sixbits <= num < c.sixbitsonebyte:
-        byte1 = int(64 + num / c.bytesize)
-        byte2 = num % c.bytesize
-        res = pack('hh', byte1, byte2)
-    # if the docid needs 3 bytes (more than 14 bits, 10 in the beginning):
-    elif c.sixbitsonebyte <= num < c.sixbits2bytes:
-        byte1 = int.from_bytes(b'\x80', 'big') + int(num / c.bytesize ** 2)
-        byte2 = int((num % c.bytesize) / c.bytesize)
-        byte3 = num % c.bytesize
-        res = pack('hhh', byte1, byte2, byte3)
-    # if the docid needs 4 bytes (more than 22 bits, 11 in the beginning):
-    elif c.sixbits2bytes <= num < c.sixbits3bytes:
-        byte1 = int.from_bytes(b'y\xc0', 'big') + int(num / (c.bytesize ** 3))
-        byte2 = int((num % (c.bytesize ** 3)) / (c.bytesize ** 2))
-        byte3 = int((num % (c.bytesize ** 2)) / c.bytesize)
-        byte4 = num % c.bytesize
-        res = pack('hhhh', byte1, byte2, byte3, byte4)
-    return res
+    wordid_docid = sorted(wordid_docid, key=get_docid)
 
+    curr_docid = wordid_docid[0][0]
+    last_docid = curr_docid
+    line = []
+    with open(dir + "file_to_words.bin", 'wb') as bin:
 
-# def divide_number_to_byets(num):
-#     numlist = []
-#     # if the docid needs 1 byte 00 in the beginning:
-#     if num < onebyte:
-#         numlist.append(num)
-#     # if the docid needs 2 bytes (more than 6 bits, 01 in the beginning):
-#     elif onebyte <= num < twobytes:
-#         numlist.append(int.from_bytes(b'\x40', 'big') + int(num / byte))
-#         numlist.append(num % byte)
-#     # if the docid needs 3 bytes (more than 14 bits, 10 in the beginning):
-#     elif twobytes <= num < threebytes:
-#         numlist.append(int.from_bytes(b'\x80', 'big') + int(num / byte ** 2))
-#         numlist.append(int((num % byte) / byte))
-#         numlist.append(num % byte)
-#     # if the docid needs 4 bytes (more than 22 bits, 11 in the beginning):
-#     elif threebytes <= num < fourbytes:
-#         numlist.append(int.from_bytes(b'y\xc0', 'big') + int(num / (byte ** 3)))
-#         numlist.append(int((num % (byte ** 3)) / (byte ** 2)))
-#         numlist.append(int((num % (byte ** 2)) / byte))
-#         numlist.append(num % byte)
-#     return numlist
+        def write_to_file():
+            bin.write(line[0].to_bytes(4, 'big'))
+            bin.write(line[1].to_bytes(4, 'big'))
+            for i in range(len(line) - 2):
+                bin.write(line[i + 2].to_bytes(4, 'big'))
+
+        for item in wordid_docid:
+            if not isinstance(item, tuple):
+                continue
+            wordid, docid = item[0], item[1]
+
+            curr_docid = docid
+            if curr_docid != last_docid and len(line) > 0:
+                write_to_file()
+                line.clear()
+                last_docid = curr_docid
+
+            if len(line) == 0:
+                line.append(docid)
+                line.append(1)
+                line.append(wordid)
+            else:
+                # number of words in file:
+                line[1] = line[1] + 1
+                line.append(wordid)
+        write_to_file()
+
+    print("Finished writing the doc to words file")

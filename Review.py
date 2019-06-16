@@ -2,6 +2,10 @@ import re
 import itertools
 
 
+def set_id_to_0():
+    count_id = itertools.count()
+    return count_id
+
 class Review:
 
     id = itertools.count()
@@ -22,7 +26,7 @@ class Review:
     def get_text(self):
         return self.__text
 
-    def delete_doubles(self):
+    def delete_text_doubles(self):
         text_no_doubles = set(self.__text)
         text_no_doubles = list(text_no_doubles)
         return text_no_doubles

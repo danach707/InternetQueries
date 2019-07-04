@@ -8,14 +8,17 @@ class IndexReader:
 
     def __init__(self, dir):
         """Creates an IndexReader which will read from the given directory"""
+
         self.metadata_path = dir+"reviews_metadata.csv"
         self.word_to_docs_path = dir + "words_to_file.bin"
-        self.doc_to_words_path = dir + "file_to_words.bin"
         self.vocabulary_path = dir+"vocabulary.dat"
+
+        self.review_id_index = 0
         self.prod_index = 1
         self.helpfulness_index = 2
         self.score_index = 3
-        self.review_id_index = 0
+        self.num_of_tokens = 4
+
 
         try:
             with open(self.vocabulary_path, "r") as voc:
@@ -63,18 +66,10 @@ class IndexReader:
     def getReviewLength(self, reviewId):
         """Returns the number of tokens in a given review
         Returns -1 if there is no review with the given identifier"""
-
-        with open(self.doc_to_words_path, 'rb') as bin:
-            while bin.tell() != os.fstat(bin.fileno()).st_size:
-                # get docid:
-                reviewId_in_file = int.from_bytes(bin.read(4), 'big')
-                # get frequency:
-                frequency = int.from_bytes(bin.read(4), 'big')
-                # skip documents:
-                int.from_bytes(bin.read(4 * frequency), 'big')
-                if reviewId_in_file == reviewId:
-                    return frequency
-            return 0
+        res = self.get_metadata_item_by_review_id(reviewId, self.num_of_tokens)
+        if res is None:
+            return -1
+        return res
 
     def getTokenFrequency(self, token):
         """Return the number of reviews containing a given token (i.e., word)
@@ -86,26 +81,21 @@ class IndexReader:
             print("Token is not in the dictionary")
             return 0
 
+        found, num = 0, 0
+        docs = set()
         with open(self.word_to_docs_path, 'rb') as bin:
             while bin.tell() != os.fstat(bin.fileno()).st_size:
                 # get wordid:
                 wordid_in_file = int.from_bytes(bin.read(4), 'big')
-                # get frequency:
-                frequency = int.from_bytes(bin.read(4), 'big')
-                if wordid_in_file == wordid:
+                # get docid:
+                docid = int.from_bytes(bin.read(4), 'big')
+
+                if wordid == wordid_in_file:
+                    docs.add(docid)
+                    found = 1
+                if wordid != wordid_in_file and found == 1:
                     break
-                # skip documents:
-                int.from_bytes(bin.read(4 * frequency), 'big')
-
-            prevFile = int.from_bytes(bin.read(4), 'big')
-            num = 1
-            for i in range(frequency):
-                currFile = int.from_bytes(bin.read(4), 'big')
-                if currFile != prevFile:
-                    num += 1
-                    prevFile = currFile
-
-            return num
+        return len(docs)
 
     def getTokenCollectionFrequency(self, token):
         """Return the number of times that a given token (i.e., word) appears in
@@ -118,17 +108,20 @@ class IndexReader:
             print("Token is not in the dictionary")
             return 0
 
+        found, num = 0, 0
         with open(self.word_to_docs_path, 'rb') as bin:
             while bin.tell() != os.fstat(bin.fileno()).st_size:
                 # get wordid:
                 wordid_in_file = int.from_bytes(bin.read(4), 'big')
-                # get frequency:
-                frequency = int.from_bytes(bin.read(4), 'big')
-                # skip documents:
-                int.from_bytes(bin.read(4 * frequency), 'big')
-                if wordid_in_file == wordid:
-                    return frequency
-            return 0
+                # get docid:
+                int.from_bytes(bin.read(4), 'big')
+
+                if wordid == wordid_in_file:
+                    num += 1
+                    found = 1
+                if wordid != wordid_in_file and found == 1:
+                    break
+        return num
 
     def getReviewsWithToken(self, token):
         """Returns a series of integers of the form id-1, freq-1, id-2, freq-2, ... such
@@ -143,22 +136,23 @@ class IndexReader:
             print("Token is not in the dictionary")
             return 0
 
-        with open(self.doc_to_words_path, 'rb') as bin:
-            tup = []
+        with open(self.word_to_docs_path, 'rb') as bin:
+            tup = dict()
             while bin.tell() != os.fstat(bin.fileno()).st_size:
                 # get wordid:
-                docid_in_file = int.from_bytes(bin.read(4), 'big')
-                # get frequency:
-                frequency = int.from_bytes(bin.read(4), 'big')
-                # count words:
-                count = 0
-                for i in range(frequency):
-                    wordid_in_file = int.from_bytes(bin.read(4), 'big')
-                    if wordid == wordid_in_file:
-                        count += 1
-                tup.append(docid_in_file)
-                tup.append(count)
-            return tuple(tup)
+                wordid_in_file = int.from_bytes(bin.read(4), 'big')
+                # get docid:
+                docid = int.from_bytes(bin.read(4), 'big')
+
+                if wordid_in_file == wordid:
+                    if docid in tup:
+                        tup[docid] += 1
+                    else:
+                        tup[docid] = 1
+
+            tup = sorted(list(tup.items()))
+            res = [e for tupl in tup for e in tupl]
+            return tuple(res)
 
     def getNumberOfReviews(self):
         """Return the number of product reviews available in the system"""
@@ -176,17 +170,7 @@ class IndexReader:
     def getTokenSizeOfReviews(self):
         """Return the number of tokens in the system
         (Tokens should be counted as many times as they appear)"""
-        res = 0
-        with open(self.word_to_docs_path, 'rb') as bin:
-            while bin.tell() != os.fstat(bin.fileno()).st_size:
-                # get wordid:
-                int.from_bytes(bin.read(4), 'big')
-                # get frequency:
-                frequency = int.from_bytes(bin.read(4), 'big')
-                res += frequency
-                # skip documents:
-                int.from_bytes(bin.read(4 * frequency), 'big')
-            return res
+        return os.stat(self.word_to_docs_path).st_size/8
 
     def getProductReviews(self, productId):
         """Return the ids of the reviews for a given product identifier
@@ -229,21 +213,4 @@ class IndexReader:
             if word == self.vocabulary[currIndex:nextIndex]:
                 return currIndex
         return -1
-
-
-if __name__ == '__main__':
-
-    i = IndexReader('./results/')
-    prod = i.getProductId(23)
-    print(prod)
-    print(i.getReviewScore(23))
-    print(i.getReviewHelpfulnessNumerator(50))
-    print(i.getReviewHelpfulnessDenominator(50))
-    print("get token frequency:", i.getTokenFrequency('this'))
-    print("num of tokens:", str(i.getTokenCollectionFrequency('this')))
-    print("token size:", str(i.getTokenSizeOfReviews()))
-    print("reviews for tokenid:", i.getProductReviews(prod))
-    print("get review length:", i.getReviewLength(23))
-    print("get number ofreviews:", i.getNumberOfReviews())
-    print("tuple of files:", i.getReviewsWithToken('this'))
 

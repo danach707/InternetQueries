@@ -15,6 +15,7 @@ class Review:
         self.product_id = product_id
         self.helpfulness = helpfulness
         self.score = score
+        self.num_of_words = 0
         self.__text = ""
         self.set_text(text)
 
@@ -22,11 +23,12 @@ class Review:
         text = text.lower()
         text = re.compile(r'[\W]').split(text)
         self.__text = list(filter(None, text))
+        self.num_of_words = len(self.__text)
 
     def get_text(self):
         return self.__text
 
-    def delete_text_doubles(self):
+    def get_text_without_doubles(self):
         text_no_doubles = set(self.__text)
         text_no_doubles = list(text_no_doubles)
         return text_no_doubles
